@@ -13,7 +13,7 @@ model = AutoModelForCausalLM.from_pretrained(
     trust_remote_code=True
 )
 
-prompt = "Question: What is 23 + 47?\n"
+prompt = "Question: What is 23 * 47?\n"
 inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
 
 outputs = model.generate(
