@@ -8,11 +8,11 @@ from pathlib import Path
 @dataclass
 class ModelConfig:
     """Model and generation settings."""
-    model_name: str = "Qwen/Qwen3-8B"
+    model_name: str = "Qwen/Qwen-2.5-3B-Reasoning"
     device: str = "cuda"
     dtype: str = "float16"  # Memory optimization for Kaggle
     max_new_tokens: int = 512
-    
+    enable_thinking: bool = True
     # Generation parameters for characterization
     temperatures: list = (0.6, 0.7, 0.8)
     top_p: float = 0.95
