@@ -8,7 +8,7 @@ Experiments:
 import pandas as pd
 import numpy as np
 from typing import List, Dict
-
+from tqdm import tqdm
 from src.data import GSM8KDataset
 from src.model import ReasoningModel
 from src.visualization import plot_usage_by_condition, plot_accuracy_comparison
