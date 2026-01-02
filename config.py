@@ -8,7 +8,7 @@ from pathlib import Path
 @dataclass
 class ModelConfig:
     """Model and generation settings."""
-    model_name: str = "Qwen/Qwen-3-4B"
+    model_name: str = "Qwen/Qwen3-4B"
     device: str = "cuda"
     dtype: str = "float16"  # Memory optimization for Kaggle
     max_new_tokens: int = 512
