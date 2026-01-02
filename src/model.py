@@ -49,16 +49,27 @@ class ReasoningModel:
                 padding=True
             ).to(self.model.device)
             
+            # Handle temperature=0 case (greedy decoding)
+            if temperature == 0.0 or temperature < 0.01:
+                gen_kwargs = {
+                    **inputs,
+                    'max_new_tokens': MODEL_CONFIG.max_new_tokens,
+                    'do_sample': False,  # Greedy decoding
+                    'pad_token_id': self.tokenizer.pad_token_id
+                }
+            else:
+                gen_kwargs = {
+                    **inputs,
+                    'max_new_tokens': MODEL_CONFIG.max_new_tokens,
+                    'temperature': temperature,
+                    'top_p': MODEL_CONFIG.top_p,
+                    'do_sample': True,
+                    'pad_token_id': self.tokenizer.pad_token_id
+                }
+            
             # Generate
             with torch.no_grad():
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=MODEL_CONFIG.max_new_tokens,
-                    temperature=temperature,
-                    top_p=MODEL_CONFIG.top_p,
-                    do_sample=True,
-                    pad_token_id=self.tokenizer.pad_token_id
-                )
+                outputs = self.model.generate(**gen_kwargs)
             
             # Decode
             for prompt, output_ids in zip(batch_prompts, outputs):
@@ -77,6 +88,7 @@ class ReasoningModel:
                 })
         
         return results
+
     
     def _extract_metadata(self, completion: str) -> Dict:
         """Extract <think> tag usage and content from completion."""
