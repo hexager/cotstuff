@@ -8,7 +8,7 @@ from pathlib import Path
 @dataclass
 class ModelConfig:
     """Model and generation settings."""
-    model_name: str = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+    model_name: str = "Qwen/Qwen3-1.7B"
     device: str = "cuda"
     dtype: str = "float16"  # Memory optimization for Kaggle
     max_new_tokens: int = 512
