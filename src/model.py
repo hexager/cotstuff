@@ -1,9 +1,9 @@
 """
-Model loading and generation utilities.
+Model loading and generation utilities (raw transformers version).
 """
 import torch
 from typing import List, Dict, Optional
-from transformer_lens import HookedTransformer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from tqdm import tqdm
 
 from config import MODEL_CONFIG
@@ -14,13 +14,21 @@ class ReasoningModel:
     
     def __init__(self):
         print(f"Loading model: {MODEL_CONFIG.model_name}")
-        self.model = HookedTransformer.from_pretrained(
+        
+        self.tokenizer = AutoTokenizer.from_pretrained(
             MODEL_CONFIG.model_name,
-            device=MODEL_CONFIG.device,
-            dtype=getattr(torch, MODEL_CONFIG.dtype)
+            trust_remote_code=True
         )
-        self.tokenizer = self.model.tokenizer
-        print(f"Model loaded. Vocabulary size: {self.model.cfg.d_vocab}")
+        
+        self.model = AutoModelForCausalLM.from_pretrained(
+            MODEL_CONFIG.model_name,
+            torch_dtype=getattr(torch, MODEL_CONFIG.dtype),
+            device_map="auto",
+            trust_remote_code=True
+        )
+        
+        self.model.eval()
+        print(f"Model loaded. Vocab size: {len(self.tokenizer)}")
     
     def generate_with_metadata(
         self,
@@ -28,30 +36,37 @@ class ReasoningModel:
         temperature: float = 0.7,
         batch_size: int = 4
     ) -> List[Dict]:
-        """
-        Generate completions and extract metadata.
-        
-        Returns:
-            List of dicts with 'prompt', 'completion', 'used_think',
-            'think_content', 'answer', 'think_length'
-        """
+        """Generate completions and extract metadata."""
         results = []
         
         for i in tqdm(range(0, len(prompts), batch_size), desc="Generating"):
             batch_prompts = prompts[i:i+batch_size]
             
-            # Generate
-            outputs = self.model.generate(
+            # Tokenize
+            inputs = self.tokenizer(
                 batch_prompts,
-                max_new_tokens=MODEL_CONFIG.max_new_tokens,
-                temperature=temperature,
-                top_p=MODEL_CONFIG.top_p,
-                do_sample=True
-            )
+                return_tensors="pt",
+                padding=True
+            ).to(self.model.device)
             
-            # Process each output
-            for prompt, output in zip(batch_prompts, outputs):
-                completion = output[len(prompt):]
+            # Generate
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=MODEL_CONFIG.max_new_tokens,
+                    temperature=temperature,
+                    top_p=MODEL_CONFIG.top_p,
+                    do_sample=True,
+                    pad_token_id=self.tokenizer.pad_token_id
+                )
+            
+            # Decode
+            for prompt, output_ids in zip(batch_prompts, outputs):
+                # Decode only the new tokens
+                prompt_length = len(self.tokenizer.encode(prompt))
+                completion_ids = output_ids[prompt_length:]
+                completion = self.tokenizer.decode(completion_ids, skip_special_tokens=False)
+                
                 metadata = self._extract_metadata(completion)
                 
                 results.append({
@@ -70,7 +85,6 @@ class ReasoningModel:
         used_think = has_think_start and has_think_end
         
         if used_think:
-            # Extract content between tags
             start_idx = completion.find("<think>") + len("<think>")
             end_idx = completion.find("</think>")
             think_content = completion[start_idx:end_idx].strip()
@@ -88,16 +102,44 @@ class ReasoningModel:
             'think_length': think_length
         }
     
-    def get_logits_at_position(
+    def get_activations(
         self,
         text: str,
-        position: int = -1
-    ) -> torch.Tensor:
-        """Get logits at a specific token position."""
-        tokens = self.tokenizer.encode(text, return_tensors="pt").to(MODEL_CONFIG.device)
+        layers: Optional[List[int]] = None
+    ) -> Dict[int, torch.Tensor]:
+        """
+        Get activations at specified layers.
+        Returns dict: {layer_idx: activation_tensor}
+        """
+        activations = {}
+        
+        def hook_fn(layer_idx):
+            def hook(module, input, output):
+                # output is typically (batch, seq, hidden_dim)
+                activations[layer_idx] = output[0].detach().cpu()
+            return hook
+        
+        # Register hooks
+        hooks = []
+        if layers is None:
+            layers = range(len(self.model.model.layers))
+        
+        for layer_idx in layers:
+            hook = self.model.model.layers[layer_idx].register_forward_hook(
+                hook_fn(layer_idx)
+            )
+            hooks.append(hook)
+        
+        # Forward pass
+        inputs = self.tokenizer(text, return_tensors="pt").to(self.model.device)
         with torch.no_grad():
-            logits = self.model(tokens)
-        return logits[0, position, :]
+            _ = self.model(**inputs)
+        
+        # Remove hooks
+        for hook in hooks:
+            hook.remove()
+        
+        return activations
     
     def clear_cache(self):
         """Clear GPU cache to free memory."""

@@ -8,14 +8,15 @@ from pathlib import Path
 @dataclass
 class ModelConfig:
     """Model and generation settings."""
-    model_name: str = "Qwen/Qwen3-4B"
+    # Use DeepSeek R1 Distill model - confirmed to have <think> tags
+    model_name: str = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
     device: str = "cuda"
-    dtype: str = "float16"  # Memory optimization for Kaggle
+    dtype: str = "float16"
     max_new_tokens: int = 512
-    enable_thinking: bool = True
-    # Generation parameters for characterization
+    
     temperatures: list = (0.6, 0.7, 0.8)
     top_p: float = 0.95
+
 
 
 @dataclass
